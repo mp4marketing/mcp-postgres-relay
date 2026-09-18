@@ -1,0 +1,28 @@
+name: Deploy Edge Function
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Referenced by .npmrc's ${NODE_AUTH_TOKEN} -- the automatic,
+      # workflow-scoped token, never a manually-managed PAT. Requires this
+      # repo to be on pg-plan-guard's own "Manage Actions access" allowlist
+      # (a one-time, manual, org-owner-only grant -- see this org's root
+      # CLAUDE.md for why there's no API for it).
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase functions deploy mcp-query-relay --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
