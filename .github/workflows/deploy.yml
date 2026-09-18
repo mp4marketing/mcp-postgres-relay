@@ -1,12 +1,25 @@
-name: Deploy Edge Function
+name: Test and Deploy Edge Function
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+
   deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,6 +36,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - run: supabase functions deploy mcp-query-relay --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+      # Deliberately WITHOUT --no-verify-jwt: Supabase's own platform gate
+      # stays on as an outer defense-in-depth layer (doc 19) -- it checks
+      # the standard Authorization header against Supabase's own key, fully
+      # independent of this design's own X-Relay-Auth scheme.
+      - run: supabase functions deploy mcp-query-relay --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
