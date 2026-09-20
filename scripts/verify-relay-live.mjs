@@ -29,11 +29,18 @@ async function check(name, fn) {
 }
 
 await check('a valid same-schema query succeeds', async () => {
+  // REAL BUG FOUND live 2026-09-20: a query with no table reference at all
+  // (e.g. `SELECT current_user`) produces a trivial plan with no scan node
+  // for pg-plan-guard's assertPlanStaysWithinSchema to walk -- it correctly
+  // fails closed on that unrecognized shape (safeCategory:
+  // 'plan_inspection_failed'), which is the guard doing its job, not a
+  // relay bug. Fixed by exercising a real table read instead, same as
+  // every actual check_data call in production does.
   const { status, json } = await callRelay(RELAY_URL, {
     role: process.env.ROLE_A,
     password: process.env.PASSWORD_A,
     database: 'crm',
-    sql: 'SELECT current_user AS u, pg_backend_pid() AS pid',
+    sql: 'SELECT current_user AS u, pg_backend_pid() AS pid FROM crm.accounts LIMIT $1',
     params: [1],
   });
   assert.equal(status, 200, JSON.stringify(json));
@@ -81,8 +88,8 @@ await check('a tampered body is rejected regardless of a valid signature', async
 
 if (process.env.ROLE_B && process.env.PASSWORD_B) {
   await check('calling as principal A then B in immediate succession returns the correct, DIFFERENT current_user each time (no cross-principal connection reuse)', async () => {
-    const a = await callRelay(RELAY_URL, { role: process.env.ROLE_A, password: process.env.PASSWORD_A, database: 'crm', sql: 'SELECT current_user AS u', params: [1] });
-    const b = await callRelay(RELAY_URL, { role: process.env.ROLE_B, password: process.env.PASSWORD_B, database: 'crm', sql: 'SELECT current_user AS u', params: [1] });
+    const a = await callRelay(RELAY_URL, { role: process.env.ROLE_A, password: process.env.PASSWORD_A, database: 'crm', sql: 'SELECT current_user AS u FROM crm.accounts LIMIT $1', params: [1] });
+    const b = await callRelay(RELAY_URL, { role: process.env.ROLE_B, password: process.env.PASSWORD_B, database: 'crm', sql: 'SELECT current_user AS u FROM crm.accounts LIMIT $1', params: [1] });
     assert.equal(a.json.rows[0].u, process.env.ROLE_A);
     assert.equal(b.json.rows[0].u, process.env.ROLE_B);
     assert.notEqual(a.json.rows[0].u, b.json.rows[0].u);
