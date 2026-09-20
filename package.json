@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "vendor:pg-plan-guard": "node scripts/vendor-pg-plan-guard.mjs"
+  },
+  "devDependencies": {
+    "@mp4marketing/pg-plan-guard": "0.1.0"
   }
 }

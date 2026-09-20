@@ -10,12 +10,18 @@
 // could serialize either. A single debug console.log here ships every
 // principal's live password into Supabase's platform log store.
 import postgres from "npm:postgres@3.4.4";
+// Relative import, NOT `npm:@mp4marketing/pg-plan-guard` -- see
+// scripts/vendor-pg-plan-guard.mjs for why (a real, unfixed Deno/Supabase
+// CLI bug in resolving PRIVATE npm packages during `functions deploy`,
+// confirmed live 2026-09-20). This file is generated/vendored, not
+// hand-written -- never edit it directly, bump the version in
+// package.json's devDependencies and re-run `npm run vendor:pg-plan-guard`.
 import {
   assertPlanStaysWithinSchema,
   SCHEMA_NAME_PATTERN,
   PRINCIPAL_ROLE_PATTERN,
   MAX_RESPONSE_BYTES,
-} from "npm:@mp4marketing/pg-plan-guard@0.1.0";
+} from "../_shared/pg-plan-guard.js";
 import { verifyRelayRequest, RelayAuthError } from "../_shared/verify-request.js";
 
 const CONTRACT_VERSION = 1;

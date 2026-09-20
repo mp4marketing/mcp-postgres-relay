@@ -24,39 +24,42 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      # Referenced by .npmrc's ${NODE_AUTH_TOKEN} -- the automatic,
+      # workflow-scoped token, never a manually-managed PAT. Requires this
+      # repo to be on pg-plan-guard's own "Manage Actions access" allowlist
+      # (a one-time, manual, org-owner-only grant -- see this org's root
+      # CLAUDE.md for why there's no API for it). Confirmed live 2026-09-20
+      # via a temporary debug curl step: the grant IS in place, GITHUB_TOKEN
+      # gets a real 200 reading this package -- the deploy failure was never
+      # a permissions problem, see the vendor step below for the real cause.
+      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # `supabase functions deploy`'s Deno-based bundler cannot reliably
+      # resolve a PRIVATE npm package during deploy (confirmed live
+      # 2026-09-20 -- both the wrong-.npmrc-location bug AND the
+      # no-env-substitution bug were fixed in turn and the failure was
+      # byte-for-byte identical: "npm package '@mp4marketing/pg-plan-guard'
+      # does not exist"). Matches a real, currently-unfixed upstream bug,
+      # supabase/cli#4927 (closed "not planned"): `functions serve` resolves
+      # private npm: specifiers correctly, `functions deploy` does not.
+      # Sidestepped entirely -- see scripts/vendor-pg-plan-guard.mjs -- by
+      # installing it as an ordinary devDependency via real npm (which DOES
+      # authenticate against npm.pkg.github.com correctly) and copying its
+      # source in as a plain relative file the Edge Function imports
+      # instead of an `npm:` specifier. `postgres@3.4.4`'s own `npm:` import
+      # in index.ts is unaffected -- it's on the public npm registry, which
+      # Deno's bundler resolves fine; the bug is specific to registries
+      # that need auth.
+      - run: npm install --no-save
+      - run: npm run vendor:pg-plan-guard
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      # Two real bugs found deploying this for the first time, 2026-09-20 (see
-      # supabase/cli#4927 and the Edge Functions "Managing dependencies" docs):
-      #   1. `supabase functions deploy`'s bundler only reads .npmrc from
-      #      inside the FUNCTION's own directory (supabase/functions/<name>/),
-      #      never the repo root -- the root .npmrc that used to sit here was
-      #      silently ignored the whole time.
-      #   2. Its .npmrc reader does NOT reliably expand `${VAR}`-style env
-      #      substitution the way `npm`/Node do -- the token must be written
-      #      in literally. Generated fresh here, every run, from the
-      #      workflow-scoped GITHUB_TOKEN (never a manually-managed PAT,
-      #      never committed) -- requires this repo to be on
-      #      pg-plan-guard's own "Manage Actions access" allowlist (a
-      #      one-time, manual, org-owner-only grant -- see this org's root
-      #      CLAUDE.md for why there's no API for it).
-      - name: DEBUG - check package registry read access (temporary, remove after diagnosing)
-        run: |
-          echo "HTTP status for GET on the versions endpoint:"
-          curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer ${GITHUB_TOKEN}" https://npm.pkg.github.com/@mp4marketing/pg-plan-guard
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Write per-function .npmrc for the private pg-plan-guard import
-        run: |
-          cat > supabase/functions/mcp-query-relay/.npmrc <<EOF
-          @mp4marketing:registry=https://npm.pkg.github.com
-          //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-          EOF
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Deliberately WITHOUT --no-verify-jwt: Supabase's own platform gate
       # stays on as an outer defense-in-depth layer (doc 19) -- it checks
       # the standard Authorization header against Supabase's own key, fully
