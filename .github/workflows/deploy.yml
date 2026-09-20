@@ -24,18 +24,33 @@ jobs:
     permissions:
       contents: read
       packages: read
-    env:
-      # Referenced by .npmrc's ${NODE_AUTH_TOKEN} -- the automatic,
-      # workflow-scoped token, never a manually-managed PAT. Requires this
-      # repo to be on pg-plan-guard's own "Manage Actions access" allowlist
-      # (a one-time, manual, org-owner-only grant -- see this org's root
-      # CLAUDE.md for why there's no API for it).
-      NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      # Two real bugs found deploying this for the first time, 2026-09-20 (see
+      # supabase/cli#4927 and the Edge Functions "Managing dependencies" docs):
+      #   1. `supabase functions deploy`'s bundler only reads .npmrc from
+      #      inside the FUNCTION's own directory (supabase/functions/<name>/),
+      #      never the repo root -- the root .npmrc that used to sit here was
+      #      silently ignored the whole time.
+      #   2. Its .npmrc reader does NOT reliably expand `${VAR}`-style env
+      #      substitution the way `npm`/Node do -- the token must be written
+      #      in literally. Generated fresh here, every run, from the
+      #      workflow-scoped GITHUB_TOKEN (never a manually-managed PAT,
+      #      never committed) -- requires this repo to be on
+      #      pg-plan-guard's own "Manage Actions access" allowlist (a
+      #      one-time, manual, org-owner-only grant -- see this org's root
+      #      CLAUDE.md for why there's no API for it).
+      - name: Write per-function .npmrc for the private pg-plan-guard import
+        run: |
+          cat > supabase/functions/mcp-query-relay/.npmrc <<EOF
+          @mp4marketing:registry=https://npm.pkg.github.com
+          //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Deliberately WITHOUT --no-verify-jwt: Supabase's own platform gate
       # stays on as an outer defense-in-depth layer (doc 19) -- it checks
       # the standard Authorization header against Supabase's own key, fully
