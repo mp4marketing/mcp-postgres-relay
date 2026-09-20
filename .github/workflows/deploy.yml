@@ -43,6 +43,12 @@ jobs:
       #      pg-plan-guard's own "Manage Actions access" allowlist (a
       #      one-time, manual, org-owner-only grant -- see this org's root
       #      CLAUDE.md for why there's no API for it).
+      - name: DEBUG - check package registry read access (temporary, remove after diagnosing)
+        run: |
+          echo "HTTP status for GET on the versions endpoint:"
+          curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer ${GITHUB_TOKEN}" https://npm.pkg.github.com/@mp4marketing/pg-plan-guard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Write per-function .npmrc for the private pg-plan-guard import
         run: |
           cat > supabase/functions/mcp-query-relay/.npmrc <<EOF
